@@ -1827,12 +1827,12 @@ describe('validate consistency — checklist-style roadmap phases must not emit 
 // means "something wrote STATE recently", not "STATE's content is accurate".
 // The number is a freshness proxy; the message must never assert drift.
 describe('W024 — STATE.md commit-age freshness advisory (#2573)', () => {
-  const { execSync } = require('child_process');
   const { after } = require('node:test');
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
   const { runGsdTools, cleanup } = require('./helpers.cjs');
+  const { runGit } = require('./helpers/process-seam.cjs');
   const {
     STATE_HEAD_ADVISORY_COMMITS,
   } = require('../gsd-core/bin/lib/verify.cjs');
@@ -1855,12 +1855,13 @@ describe('W024 — STATE.md commit-age freshness advisory (#2573)', () => {
       '# Roadmap\n\n## Milestone v1.0\n\n### Phase 1: One\n**Goal:** g\n',
     );
 
-    execSync('git init -q', { cwd: base, stdio: 'pipe' });
-    execSync('git config user.email "t@t.com"', { cwd: base, stdio: 'pipe' });
-    execSync('git config user.name "T"', { cwd: base, stdio: 'pipe' });
-    execSync('git config commit.gpgsign false', { cwd: base, stdio: 'pipe' });
-    execSync('git add -A && git commit -q -m seed', { cwd: base, stdio: 'pipe' });
-    const head = execSync('git rev-parse HEAD', { cwd: base, encoding: 'utf-8' }).trim();
+    runGit(['init', '-q'], { cwd: base });
+    runGit(['config', 'user.email', 't@t.com'], { cwd: base });
+    runGit(['config', 'user.name', 'T'], { cwd: base });
+    runGit(['config', 'commit.gpgsign', 'false'], { cwd: base });
+    runGit(['add', '-A'], { cwd: base });
+    runGit(['commit', '-q', '-m', 'seed'], { cwd: base });
+    const head = runGit(['rev-parse', 'HEAD'], { cwd: base }).stdout.trim();
 
     fs.writeFileSync(
       path.join(planningDir, 'STATE.md'),
@@ -1880,7 +1881,8 @@ describe('W024 — STATE.md commit-age freshness advisory (#2573)', () => {
 
     for (let i = 0; i < commitsAhead; i++) {
       fs.writeFileSync(path.join(base, `f${i}.txt`), `${i}\n`);
-      execSync(`git add -A && git commit -q -m c${i}`, { cwd: base, stdio: 'pipe' });
+      runGit(['add', '-A'], { cwd: base });
+      runGit(['commit', '-q', '-m', `c${i}`], { cwd: base });
     }
     return base;
   }

@@ -553,7 +553,7 @@ describe('#2427 — roadmap-grounded completion + tightened status regex', () =>
 // ─── #2573: STATE.md commit-age freshness signal ─────────────────────────────
 
 describe('detectSignals — state_head commit-age freshness (#2573)', () => {
-  const { execSync } = require('child_process');
+  const { runGit } = require('./helpers/process-seam.cjs');
 
   const dirs = [];
   const track = (d) => { dirs.push(d); return d; };
@@ -562,13 +562,14 @@ describe('detectSignals — state_head commit-age freshness (#2573)', () => {
   function gitProject(stateHead) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-se-'));
     fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
-    execSync('git init -q', { cwd: dir, stdio: 'pipe' });
-    execSync('git config user.email "t@t.com"', { cwd: dir, stdio: 'pipe' });
-    execSync('git config user.name "T"', { cwd: dir, stdio: 'pipe' });
-    execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'pipe' });
+    runGit(['init', '-q'], { cwd: dir });
+    runGit(['config', 'user.email', 't@t.com'], { cwd: dir });
+    runGit(['config', 'user.name', 'T'], { cwd: dir });
+    runGit(['config', 'commit.gpgsign', 'false'], { cwd: dir });
     fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n');
-    execSync('git add -A && git commit -q -m "seed"', { cwd: dir, stdio: 'pipe' });
-    const base = execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim();
+    runGit(['add', '-A'], { cwd: dir });
+    runGit(['commit', '-q', '-m', 'seed'], { cwd: dir });
+    const base = runGit(['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
 
     fs.writeFileSync(
       path.join(dir, '.planning', 'STATE.md'),
@@ -590,7 +591,8 @@ describe('detectSignals — state_head commit-age freshness (#2573)', () => {
   function advance(dir, n) {
     for (let i = 0; i < n; i++) {
       fs.writeFileSync(path.join(dir, `c${i}.txt`), `${i}\n`);
-      execSync(`git add -A && git commit -q -m "c${i}"`, { cwd: dir, stdio: 'pipe' });
+      runGit(['add', '-A'], { cwd: dir });
+      runGit(['commit', '-q', '-m', `c${i}`], { cwd: dir });
     }
   }
 

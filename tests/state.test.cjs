@@ -11232,7 +11232,7 @@ describe('bug #2440 — shouldPreserveExistingProgress does not ratchet total_pl
 // ─── #2573: state_head commit provenance on the write seam ───────────────────
 
 describe('syncStateFrontmatter — state_head commit provenance (#2573)', () => {
-  const { execSync } = require('child_process');
+  const { runGit } = require('./helpers/process-seam.cjs');
   const { syncStateFrontmatter } = require('../gsd-core/bin/lib/state.cjs');
   const { extractFrontmatter } = require('../gsd-core/bin/lib/frontmatter.cjs');
   const { createTempGitProject: mkGit } = require('./helpers.cjs');
@@ -11254,7 +11254,7 @@ describe('syncStateFrontmatter — state_head commit provenance (#2573)', () => 
 
   test('stamps state_head with the full HEAD sha of the project repo', () => {
     const dir = track(mkGit('gsd-2573-'));
-    const head = execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim();
+    const head = runGit(['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
 
     const synced = syncStateFrontmatter(MINIMAL_STATE, dir);
     const fm = extractFrontmatter(synced);
@@ -11319,10 +11319,11 @@ describe('syncStateFrontmatter — state_head commit provenance (#2573)', () => 
     const first = extractFrontmatter(syncStateFrontmatter(MINIMAL_STATE, dir)).state_head;
 
     fs.writeFileSync(path.join(dir, 'unrelated.txt'), 'change\n');
-    execSync('git add -A && git commit -m "unrelated"', { cwd: dir, stdio: 'pipe' });
+    runGit(['add', '-A'], { cwd: dir });
+    runGit(['commit', '-m', 'unrelated'], { cwd: dir });
     const second = extractFrontmatter(syncStateFrontmatter(MINIMAL_STATE, dir)).state_head;
 
-    const head = execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim();
+    const head = runGit(['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
     assert.notStrictEqual(second, first, 'a new commit must produce a new state_head');
     assert.strictEqual(second, head, 'state_head must track the current HEAD');
   });
@@ -11366,7 +11367,7 @@ describe('syncStateFrontmatter — state_head commit provenance (#2573)', () => 
 
 describe('readStateHeadFreshness — property invariants (#2573)', () => {
   const fc = require('./helpers/fast-check-setup.cjs');
-  const { execSync } = require('child_process');
+  const { runGit } = require('./helpers/process-seam.cjs');
   const { after } = require('node:test');
   const fs = require('node:fs');
   const os = require('node:os');
@@ -11380,12 +11381,13 @@ describe('readStateHeadFreshness — property invariants (#2573)', () => {
   function gitRepo() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-prop-'));
     propDirs.push(dir);
-    execSync('git init -q', { cwd: dir, stdio: 'pipe' });
-    execSync('git config user.email "t@t.com"', { cwd: dir, stdio: 'pipe' });
-    execSync('git config user.name "T"', { cwd: dir, stdio: 'pipe' });
-    execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'pipe' });
+    runGit(['init', '-q'], { cwd: dir });
+    runGit(['config', 'user.email', 't@t.com'], { cwd: dir });
+    runGit(['config', 'user.name', 'T'], { cwd: dir });
+    runGit(['config', 'commit.gpgsign', 'false'], { cwd: dir });
     fs.writeFileSync(path.join(dir, 'a.txt'), 'a\n');
-    execSync('git add -A && git commit -q -m seed', { cwd: dir, stdio: 'pipe' });
+    runGit(['add', '-A'], { cwd: dir });
+    runGit(['commit', '-q', '-m', 'seed'], { cwd: dir });
     return dir;
   }
 
@@ -11447,16 +11449,16 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
     // to preserve, so a non-ancestor stamp must come back null.
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-nonanc-'));
     propDirs.push(d);
-    const g = (c) => execSync(c, { cwd: d, stdio: 'pipe', encoding: 'utf-8' });
-    g('git init -q'); g('git config user.email t@t.com'); g('git config user.name T');
-    g('git config commit.gpgsign false');
+    const g = (argv) => runGit(argv, { cwd: d }).stdout;
+    g(['init', '-q']); g(['config', 'user.email', 't@t.com']); g(['config', 'user.name', 'T']);
+    g(['config', 'commit.gpgsign', 'false']);
     fs.writeFileSync(path.join(d, 'a.txt'), 'a\n');
-    g('git add -A && git commit -q -m base');
-    const base = g('git rev-parse HEAD').trim();
+    g(['add', '-A']); g(['commit', '-q', '-m', 'base']);
+    const base = g(['rev-parse', 'HEAD']).trim();
     fs.writeFileSync(path.join(d, 'b.txt'), 'b\n');
-    g('git add -A && git commit -q -m c1');
-    const tip = g('git rev-parse HEAD').trim();
-    g(`git reset --hard -q ${base}`);
+    g(['add', '-A']); g(['commit', '-q', '-m', 'c1']);
+    const tip = g(['rev-parse', 'HEAD']).trim();
+    g(['reset', '--hard', '-q', base]);
 
     const r = readStateHeadFreshness(d, tip);
     assert.strictEqual(r.commits_behind, null, 'a non-ancestor stamp has no meaningful distance');
@@ -11464,7 +11466,7 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
   });
 
   test('(e) a real HEAD sha always resolves to zero commits behind', () => {
-    const head = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
+    const head = runGit(['rev-parse', 'HEAD'], { cwd: repo }).stdout.trim();
     const r = readStateHeadFreshness(repo, head);
     assert.strictEqual(r.commits_behind, 0);
     assert.strictEqual(r.commit_stale, false);
@@ -11484,12 +11486,12 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
     // repo at all. Same invariant violation as (f), reached by another route.
     const outer = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-ancestor-'));
     propDirs.push(outer);
-    const g = (c) => execSync(c, { cwd: outer, stdio: 'pipe', encoding: 'utf-8' });
-    g('git init -q'); g('git config user.email t@t.com'); g('git config user.name T');
-    g('git config commit.gpgsign false');
+    const g = (argv) => runGit(argv, { cwd: outer }).stdout;
+    g(['init', '-q']); g(['config', 'user.email', 't@t.com']); g(['config', 'user.name', 'T']);
+    g(['config', 'commit.gpgsign', 'false']);
     fs.writeFileSync(path.join(outer, 'unrelated.txt'), 'x\n');
-    g('git add -A && git commit -q -m outer');
-    const outerHead = g('git rev-parse HEAD').trim();
+    g(['add', '-A']); g(['commit', '-q', '-m', 'outer']);
+    const outerHead = g(['rev-parse', 'HEAD']).trim();
 
     // The project itself is NOT a git repo — it merely sits inside one.
     const project = path.join(outer, 'nested-project');
@@ -11511,13 +11513,13 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
     // exactly what broke the macOS and Windows CI shards.
     const realDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-symreal-'));
     propDirs.push(realDir);
-    const g = (c) => execSync(c, { cwd: realDir, stdio: 'pipe', encoding: 'utf-8' });
-    g('git init -q'); g('git config user.email t@t.com'); g('git config user.name T');
-    g('git config commit.gpgsign false');
+    const g = (argv) => runGit(argv, { cwd: realDir }).stdout;
+    g(['init', '-q']); g(['config', 'user.email', 't@t.com']); g(['config', 'user.name', 'T']);
+    g(['config', 'commit.gpgsign', 'false']);
     fs.mkdirSync(path.join(realDir, '.planning'), { recursive: true });
     fs.writeFileSync(path.join(realDir, 'a.txt'), 'a\n');
-    g('git add -A && git commit -q -m base');
-    const head = g('git rev-parse HEAD').trim();
+    g(['add', '-A']); g(['commit', '-q', '-m', 'base']);
+    const head = g(['rev-parse', 'HEAD']).trim();
 
     const linkDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-symlink-')), 'proj');
     propDirs.push(path.dirname(linkDir));
@@ -11548,28 +11550,28 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
     // wrapper that is itself a repo is a supported layout, not a contrived one.
     const outer = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-subrepos-'));
     propDirs.push(outer);
-    const g = (c) => execSync(c, { cwd: outer, stdio: 'pipe', encoding: 'utf-8' });
-    g('git init -q'); g('git config user.email t@t.com'); g('git config user.name T');
-    g('git config commit.gpgsign false');
+    const g = (argv) => runGit(argv, { cwd: outer }).stdout;
+    g(['init', '-q']); g(['config', 'user.email', 't@t.com']); g(['config', 'user.name', 'T']);
+    g(['config', 'commit.gpgsign', 'false']);
     fs.mkdirSync(path.join(outer, '.planning'), { recursive: true });
     fs.writeFileSync(
       path.join(outer, '.planning', 'config.json'),
       JSON.stringify({ planning: { sub_repos: ['frontend'] } }, null, 2),
     );
     fs.writeFileSync(path.join(outer, 'wrapper.txt'), 'x\n');
-    g('git add -A && git commit -q -m outer');
-    const outerHead = g('git rev-parse HEAD').trim();
+    g(['add', '-A']); g(['commit', '-q', '-m', 'outer']);
+    const outerHead = g(['rev-parse', 'HEAD']).trim();
 
     // A separately tracked child repo — where the real work happens. The outer
     // repo is deliberately NOT advanced past `outerHead` afterwards, which is
     // precisely the topology that makes the stale reading look fresh.
     const child = path.join(outer, 'frontend');
     fs.mkdirSync(child, { recursive: true });
-    const gc = (c) => execSync(c, { cwd: child, stdio: 'pipe', encoding: 'utf-8' });
-    gc('git init -q'); gc('git config user.email t@t.com'); gc('git config user.name T');
-    gc('git config commit.gpgsign false');
+    const gc = (argv) => runGit(argv, { cwd: child }).stdout;
+    gc(['init', '-q']); gc(['config', 'user.email', 't@t.com']); gc(['config', 'user.name', 'T']);
+    gc(['config', 'commit.gpgsign', 'false']);
     fs.writeFileSync(path.join(child, 'app.js'), 'let a = 1;\n');
-    gc('git add -A && git commit -q -m child');
+    gc(['add', '-A']); gc(['commit', '-q', '-m', 'child']);
 
     const r = readStateHeadFreshness(outer, outerHead);
     assert.strictEqual(r.commit_stale, null,
@@ -11586,17 +11588,17 @@ const HEX_RE = /^[0-9a-f]{4,40}$/i;
     // feature, which is the failure mode this pins.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2573-plain-'));
     propDirs.push(dir);
-    const g = (c) => execSync(c, { cwd: dir, stdio: 'pipe', encoding: 'utf-8' });
-    g('git init -q'); g('git config user.email t@t.com'); g('git config user.name T');
-    g('git config commit.gpgsign false');
+    const g = (argv) => runGit(argv, { cwd: dir }).stdout;
+    g(['init', '-q']); g(['config', 'user.email', 't@t.com']); g(['config', 'user.name', 'T']);
+    g(['config', 'commit.gpgsign', 'false']);
     fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
     fs.writeFileSync(
       path.join(dir, '.planning', 'config.json'),
       JSON.stringify({ planning: { sub_repos: [] } }, null, 2),
     );
     fs.writeFileSync(path.join(dir, 'a.txt'), 'a\n');
-    g('git add -A && git commit -q -m base');
-    const head = g('git rev-parse HEAD').trim();
+    g(['add', '-A']); g(['commit', '-q', '-m', 'base']);
+    const head = g(['rev-parse', 'HEAD']).trim();
 
     const r = readStateHeadFreshness(dir, head);
     assert.strictEqual(r.commit_stale, false,
