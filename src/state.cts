@@ -2131,15 +2131,24 @@ function syncStateFrontmatter(content: string, cwd: string | undefined, authorit
   for (const key of Object.keys(existingFm)) {
     if (key in derivedFm || existingFm[key] === undefined) continue;
 
-    // #2573: a `derive`-classified field is recomputed from an ambient source on
-    // every write, and is OMITTED entirely when that source is unavailable (see
-    // buildStateFrontmatter's `if (stateHead)` guard). Carrying the old value
-    // forward here would re-assert provenance the file no longer has — a stale
-    // state_head would claim STATE.md was written against a commit it wasn't,
-    // contradicting its own ADR-1769 row. Consult the classification table
-    // rather than naming fields here, so the policy stays single-sourced.
+    // #2573: a `source: 'free'` field is the writer's word on every write and
+    // carries no preservation (see the FieldSource doc). When buildStateFrontmatter
+    // omits it — `state_head` outside a git repo, per its `if (stateHead)` guard —
+    // carrying the old value forward would re-assert provenance the file no longer
+    // has: a stale state_head would claim STATE.md was written against a commit it
+    // wasn't, contradicting its own ADR-1769 row.
+    //
+    // Narrow the skip to `source: 'free'`, NOT every `derive` row. `last_activity`
+    // ({source:'body'}) and the `progress.*` rows ({source:'disk'}) are also
+    // `derive`, but they are body/disk-sourced and MUST still carry forward when
+    // the writer omits them this pass — dropping `last_activity` here is silent
+    // frontmatter data loss and would defeat #2570's staleness fix downstream.
+    // `last_updated` and `gsd_state_version` are the only other `free` rows and are
+    // both produced unconditionally by buildStateFrontmatter, so this loop never
+    // reaches them; `state_head` is the sole field the skip governs. Consult the
+    // table rather than naming fields, so the policy stays single-sourced.
     const classification = stateTransitionMod.getFieldClassification(key);
-    if (classification && classification.preservation === 'derive') continue;
+    if (classification && classification.source === 'free') continue;
 
     derivedFm[key] = existingFm[key];
   }

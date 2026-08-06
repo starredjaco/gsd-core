@@ -11326,6 +11326,34 @@ describe('syncStateFrontmatter — state_head commit provenance (#2573)', () => 
     assert.notStrictEqual(second, first, 'a new commit must produce a new state_head');
     assert.strictEqual(second, head, 'state_head must track the current HEAD');
   });
+
+  test('carries a body-absent last_activity forward instead of dropping it (#2622 B1)', () => {
+    // #2622 B1: the #2202 carry-forward loop skips `source: 'free'` fields
+    // (state_head) so an unresolvable stamp is never re-asserted — but it must
+    // NOT skip `last_activity` ({source:'body', preservation:'derive'}). When the
+    // body carries no "Last activity:" line, buildStateFrontmatter omits the
+    // field, and the existing frontmatter value has to survive: dropping it is
+    // silent frontmatter data loss and would defeat #2570's staleness signal
+    // downstream. A non-git project keeps this on the carry-forward path
+    // (state_head is simply absent) and needs no subprocess.
+    const STATE_WITH_ACTIVITY = [
+      '---',
+      'status: executing',
+      'last_activity: 2026-01-15',
+      '---',
+      '',
+      '# Session State',
+      '',
+      'Status: executing',
+      '',
+    ].join('\n');
+
+    const dir = track(createTempProject('gsd-2622-b1-'));
+    const fm = extractFrontmatter(syncStateFrontmatter(STATE_WITH_ACTIVITY, dir));
+
+    assert.strictEqual(fm.last_activity, '2026-01-15',
+      'a body-absent last_activity must carry forward, not be dropped by the state_head narrowing');
+  });
 });
 
 

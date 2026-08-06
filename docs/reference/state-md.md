@@ -73,6 +73,9 @@ paused_at: null
 | `current_plan` | string | When a plan is in progress | Plan number extracted from the body `Current Plan:` field. |
 | `last_updated` | ISO-8601 timestamp | Always (on write) | Timestamp of the last `syncStateFrontmatter` call; written by `realClock.nowIso()`. |
 | `state_head` | string (40-char sha) | On write, when the project's own git repo resolves | Full commit sha STATE.md was written against (#2573). Omitted entirely outside a git repo, when the resolved repo is not the project's own, or in a `planning.sub_repos` workspace — an unverifiable stamp degrades to absent rather than asserting provenance the file does not have. Recomputed on every write and never carried forward. |
+| `last_activity` | string | When set in body | Date of the last activity, extracted from the body `Last Activity:` field. |
+| `stopped_at` | string | When a stop point was recorded | Description of the last completed action; scoped to the `## Session` body section to avoid matching archive prose. |
+| `paused_at` | string | When the project is paused | Freeform description of the pause point; absent or `null` when not paused. |
 
 > **Known limitation — multi-repo workspaces.** In a workspace configured with
 > [`planning.sub_repos`](../CONFIGURATION.md#planning), the freshness hint reports *unknown*
@@ -82,9 +85,6 @@ paused_at: null
 > "known fresh" for a STATE.md that is arbitrarily far behind. Reporting unknown is deliberate:
 > a wrong answer here is worse than no answer. Aggregating freshness across several child
 > histories needs a defined semantics and is not part of this feature.
-| `last_activity` | string | When set in body | Date of the last activity, extracted from the body `Last Activity:` field. |
-| `stopped_at` | string | When a stop point was recorded | Description of the last completed action; scoped to the `## Session` body section to avoid matching archive prose. |
-| `paused_at` | string | When the project is paused | Freeform description of the pause point; absent or `null` when not paused. |
 
 ### Status values
 
